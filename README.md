@@ -15,7 +15,7 @@ go get github.com/losinggeneration/claude-agent-sdk-go
 
 **Prerequisites:**
 
-- Go 1.26.6 or later
+- Go 1.27.0 or later
 - Claude Code CLI on `$PATH` (or under `~/.local/bin`, `~/.claude/local`,
   or `/usr/local/bin`)
 
@@ -77,6 +77,35 @@ options := claude.Options{
 }
 out, errs = claude.Query(ctx, "Tell me a joke", options)
 ```
+
+### Send images
+
+`Query` and `Client.Send` accept either a `string` or `[]InputBlock`.
+Use input blocks to combine text with base64-encoded images or HTTP(S) image URLs:
+
+```go
+blocks := []claude.InputBlock{
+    {Type: "text", Text: "Describe this image."},
+    {Type: "image", Source: &claude.ImageSource{
+        Type: "url",
+        URL:  "https://example.com/image.png",
+    }},
+}
+out, errs := claude.Query(ctx, blocks, options)
+```
+
+For base64 images, set the source's `Type` to `"base64"`, `Data` to the
+base64-encoded image, and `MediaType` to `image/jpeg`, `image/png`, `image/gif`,
+or `image/webp`. Omit `URL`.
+
+Invalid blocks return an error before a transport write. `Query` reports
+validation errors on its error channel before connecting to the CLI.
+Validation checks the source structure and base64 encoding, not image contents
+or provider size limits.
+
+Use `InputBlock` for prompts, not the response-only `ContentBlock` types.
+Raw `[]map[string]any` prompts are not accepted. `Client.SendMessage` remains
+available for raw protocol messages without prompt validation.
 
 ### Using Tools
 

@@ -20,22 +20,23 @@ func NewClientWithTransport(opts Options, t Transport) *Client {
 	return &Client{Options: opts, transport: t}
 }
 
-// Query sends one prompt and streams the resulting messages. The prompt is
-// either a plain string or Anthropic content blocks (e.g. []map[string]any
-// holding {"type": "text"} and {"type": "image", "source": {...}} entries),
-// passed through as the user message content.
-func Query(ctx context.Context, prompt any, opts Options) (<-chan Message, <-chan error) {
+// Query sends text or input blocks and streams the resulting messages.
+func Query[P Prompt](ctx context.Context, prompt P, opts Options) (<-chan Message, <-chan error) {
 	c := NewClient(opts)
 	out, errs := make(chan Message), make(chan error, 1)
 	go func() {
 		defer close(out)
 		defer close(errs)
+		if err := validatePrompt(prompt); err != nil {
+			errs <- err
+			return
+		}
 		if err := c.Connect(ctx); err != nil {
 			errs <- err
 			return
 		}
 		defer c.Close()
-		if err := c.Send(ctx, prompt); err != nil {
+		if err := c.sendPrompt(ctx, prompt); err != nil {
 			errs <- err
 			return
 		}
@@ -128,10 +129,17 @@ func (c *Client) Connect(ctx context.Context) error {
 }
 
 // Send writes a user prompt to the streaming client. The prompt is a plain
-// string or content blocks (see Query). sessionID is the
+// string or []InputBlock. sessionID is the
 // streaming logical conversation key, not the persisted ResultMessage.SessionID;
 // omit it to reuse "default" across normal multi-turn calls.
-func (c *Client) Send(ctx context.Context, prompt any, sessionID ...string) error {
+func (c *Client) Send[P Prompt](ctx context.Context, prompt P, sessionID ...string) error {
+	if err := validatePrompt(prompt); err != nil {
+		return err
+	}
+	return c.sendPrompt(ctx, prompt, sessionID...)
+}
+
+func (c *Client) sendPrompt(ctx context.Context, prompt any, sessionID ...string) error {
 	sid := "default"
 	if len(sessionID) > 0 && sessionID[0] != "" {
 		sid = sessionID[0]
